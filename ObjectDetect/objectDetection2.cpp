@@ -120,7 +120,7 @@ void ShowOnlyOneChannelOfRGB(const string &winName, Mat &img)
 /**
  * @function detectAndDisplay
  */
-void detectAndDisplay( Mat frame )
+int detectAndDisplay( Mat frame )
 {
    std::vector<Rect> faces;
    Mat frame_gray;
@@ -128,6 +128,8 @@ void detectAndDisplay( Mat frame )
    //get the average pixel value of the detected face region in a frame,
    //filter out the pixel value is too black or too white (that means these pixel value is far from mean)
    //calculate the average pixel value again for the detected face.
+   double t = (double)cv::getTickCount();
+
    cvtColor( frame, frame_gray, CV_BGR2GRAY );
    equalizeHist( frame_gray, frame_gray );
 
@@ -174,4 +176,7 @@ void detectAndDisplay( Mat frame )
     }
    //-- Show what you got
    imshow( window_name, frame );
+	t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
+	std::cout<< "FPS@" << 1.0/t  << std::endl;
+	return faces.size();
 }
