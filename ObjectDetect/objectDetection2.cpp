@@ -12,9 +12,15 @@
 
 using namespace std;
 using namespace cv;
+/*
+http://www.cplusplus.com/reference/vector/vector/
+std::vector<type T> ==> a vector is a dynamically allocated array,  but an array is static allocation.
+
+*/
 
 /** Function Headers */
-void detectAndDisplay( Mat frame );
+int ProcessFrame(Mat &frame);
+int detectAndDisplay( Mat frame );
 
 /** Global variables */
 /*
@@ -46,15 +52,32 @@ int main( void )
   capture = cvCaptureFromCAM( -1 );
   if( capture )
   {
-    for(;;)
-    {
-      frame = cvQueryFrame( capture );
+  	unsigned long frames=0;
+	double t2,t1 ;
+	double f=cv::getTickFrequency();
+	int fps=0;
 
+	for(;;)
+    {
+		t1 = (double)cv::getTickCount();
+		frame = cvQueryFrame( capture );
+		frames++;
       //-- 3. Apply the classifier to the frame
       if( !frame.empty() )
-       { detectAndDisplay( frame ); }
+       { 
+       	ProcessFrame(frame); 
+		}
       else
        { printf(" --(!) No captured frame -- Break!"); break; }
+
+	  	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
+	//std::cout<< "FPS@" << 1.0/t  << std::endl;
+
+	//fps[?
+	t2 = (double)cv::getTickCount();
+	double t=t2-t1;
+	fps = (int)(f / t);
+	std::cout <<  "FPS@" << fps  << std::endl;
 
       int c = waitKey(10);
       if( (char)c == 'c' ) { break; }
@@ -117,6 +140,23 @@ void ShowOnlyOneChannelOfRGB(const string &winName, Mat &img)
     imshow(winName, fin_img);
 }
 
+int ProcessFrame(Mat & frame)
+{
+	int64 t2=0, t1=cv::getTickCount();
+	//double f=cv::getTickFrequency();
+	//int fps=0;
+	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
+	//std::cout<< "FPS@" << 1.0/t  << std::endl;
+
+	detectAndDisplay( frame );
+
+	//fps[?
+	t2 = cv::getTickCount();
+	return (int)(t2-t1);
+	//fps = (int)(f / t);
+	//std::cout <<  "FPS@" << fps  << std::endl;
+}
+
 /**
  * @function detectAndDisplay
  */
@@ -128,7 +168,6 @@ int detectAndDisplay( Mat frame )
    //get the average pixel value of the detected face region in a frame,
    //filter out the pixel value is too black or too white (that means these pixel value is far from mean)
    //calculate the average pixel value again for the detected face.
-   double t = (double)cv::getTickCount();
 
    cvtColor( frame, frame_gray, CV_BGR2GRAY );
    equalizeHist( frame_gray, frame_gray );
@@ -141,20 +180,23 @@ int detectAndDisplay( Mat frame )
       Mat faceROI = frame_gray( faces[i] );
       std::vector<Rect> eyes;
 	  	Mat faceROI_rgb = frame( faces[i] );
-	vector<Mat> rgb;
+	std::vector<Mat> roi_rgb;//a dynamic matrix array
 	Mat ig;
-	split(faceROI_rgb, rgb);
+	split(faceROI_rgb, roi_rgb);
 	 //split rgb channels
-	imshow( "r",rgb[2]);
-	imshow( "g",rgb[1]);
-	imshow( "b",rgb[0]);
+	imshow( "r",roi_rgb[2]);
+	imshow( "g",roi_rgb[1]);
+	imshow( "b",roi_rgb[0]);
 	imshow("face", faceROI_rgb);
-   SepShowImgRGB("sep", rgb);
-   //integral(rgb[1],ig);
+   SepShowImgRGB("sep", roi_rgb);
    //computes mean over roi
-	cv::Scalar avgPixelIntensity = cv::mean( rgb[0] );//blue
-	avgPixelIntensity = cv::mean( rgb[1] );//green
-	avgPixelIntensity = cv::mean( rgb[2] );//red
+   	Mat m_r(roi_rgb[2]),m_g(roi_rgb[1]),m_b(roi_rgb[0]);//vector to r,g,b matrix
+	cv::Scalar avgPixelIntensity = cv::mean( m_g );//mean of g channel mat only
+	//http://stackoverflow.com/questions/10959987/equivalent-to-cvavg-in-the-opencv-c-interface
+	avgPixelIntensity = cv::mean( faceROI_rgb );//rgb mean of roi, 3 channel matrix
+	cout << "Pixel intensity over ROI = " << avgPixelIntensity.val[0] <<", "<< avgPixelIntensity.val[1] <<", "
+	<<", " <<avgPixelIntensity.val[2] << endl;
+
 	  //-- Draw the face
       //Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 );
 	  Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 + faces[i].height/8 );
@@ -176,7 +218,5 @@ int detectAndDisplay( Mat frame )
     }
    //-- Show what you got
    imshow( window_name, frame );
-	t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
-	std::cout<< "FPS@" << 1.0/t  << std::endl;
 	return faces.size();
 }
