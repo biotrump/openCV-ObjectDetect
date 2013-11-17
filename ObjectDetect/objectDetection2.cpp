@@ -19,8 +19,8 @@ std::vector<type T> ==> a vector is a dynamically allocated array,  but an array
 */
 
 /** Function Headers */
-int ProcessFrame(Mat &frame);
-int detectAndDisplay( Mat frame );
+int ProcessFrame(Mat frame, size_t &faces, cv::Scalar &avgPixelIntensity);
+size_t detectAndDisplay( Mat &frame,cv::Scalar& avgPixelIntensity );
 
 /** Global variables */
 /*
@@ -54,31 +54,148 @@ int main( void )
   {
   	unsigned long frames=0;
 	double t2,t1 ;
+	double fft_s= (double)cv::getTickCount();
 	double f=cv::getTickFrequency();
 	int fps=0;
+	cv::Scalar avgPixelIntensity;
+	Mat mfm = Mat(1,60, CV_8UC3, cv::Scalar::all(0));//rgb 3 channel, up to 60fps
+	int i=0;
 
 	for(;;)
     {
+    	size_t nFace;
 		t1 = (double)cv::getTickCount();
 		frame = cvQueryFrame( capture );
 		frames++;
       //-- 3. Apply the classifier to the frame
       if( !frame.empty() )
        { 
-       	ProcessFrame(frame); 
+       	nFace=0;
+       	ProcessFrame(frame, nFace, avgPixelIntensity);
+		if(nFace){
+//			mfm.at<Vec3b>(0,i)=Point3_<uchar>(i,i,i);	//3D(3 channel) point to matrix element(0,i) which has 3 channels.
+			//The first 3 components of Scalar are mean of R,G,B frame
+			//Copy the scalar to matrix for later DFT
+			//<Vec3b> 3 channel element to matrix element(0,i) which has 3 channels.
+			//m(0,i) = Scalar
+			mfm.at<Vec3b>(0,i)[0]=(uchar)avgPixelIntensity.val[0];
+			mfm.at<Vec3b>(0,i)[1]=(uchar)avgPixelIntensity.val[1];
+			mfm.at<Vec3b>(0,i)[2]=(uchar)avgPixelIntensity.val[2];
+			i++;
+			cout << "#=" << i << endl;
+			}
+		else {
+			i=0;
+			fft_s= (double)cv::getTickCount();
+			//continue;
+			goto _waitkey;
+			}
 		}
       else
-       { printf(" --(!) No captured frame -- Break!"); break; }
-
+       { 
+		   printf(" --(!) No captured frame -- Break!");
+		   i =0 ; //reset frame start
+		   fft_s= (double)cv::getTickCount(); //reset start of fft
+		   break; 
+	  }
+	
+	t2 = (double)cv::getTickCount();
+	if( (i>=4) && (t2 - fft_s) >= f) /* 1 second passed to do FFT */
+	{
 	  	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
 	//std::cout<< "FPS@" << 1.0/t  << std::endl;
-
 	//fps[?
-	t2 = (double)cv::getTickCount();
-	double t=t2-t1;
-	fps = (int)(f / t);
-	std::cout <<  "FPS@" << fps  << std::endl;
+		double t=t2-t1;
+		fps = (int)(f / t); //instant fps
+		std::cout <<  "FPS@" << fps  << std::endl;
+		std::cout << "Tick:" << (t2-fft_s) << "F ticks: " << f << " frame#=" << i << std::endl;
+		//Do FFT and power spectrum for avgPixelIntensity
+		//http://stackoverflow.com/questions/3183078/how-to-implement-1d-fft-filter-for-each-horizontal-line-data-from-image
+		//http://docs.opencv.org/doc/tutorials/core/discrete_fourier_transform/discrete_fourier_transform.html?highlight=fourier
+		/* 1.Expand the image to an optimal size. The performance of a DFT is dependent of the image size. 
+		It tends to be the fastest for image sizes that are multiple of the numbers two, three and five. 
+		Therefore, to achieve maximal performance it is generally a good idea to pad border values 
+		to the image to get a size with such traits. The getOptimalDFTSize() returns this optimal size and 
+		we can use the copyMakeBorder() function to expand the borders of an image:
+		*/
+		Mat one_row_in_frequency_domain;
+		std::vector<Mat> gray_ch;
+		//Mat pm_rgb = Mat(1,60,CV_8UC4,avgPixelIntensities);
+		//split(avgPixelIntensity->, gray_ch);
+		Mat one_row(1, i	, CV_64FC4);
+		// reduce to 1 channel to do fft?
+		int n=getOptimalDFTSize(i); //1d matrix //expand input image to optimal size
+		Mat padded;
+		// on the border add zero pixels for FFT
+		copyMakeBorder(one_row, padded, 0, 0, 0, n - i, BORDER_CONSTANT, Scalar::all(0));
+		/* 2.Make place for both the complex and the real values. The result of a Fourier Transform is complex. 
+		This implies that for each image value the result is two image values (one per component). 
+		Moreover, the frequency domains range is much larger than its spatial counterpart. Therefore,
+		we store these usually at least in a float format. 
+		Therefore we・ll convert our input image to this type and expand it with another channel to 
+		hold the complex values:
+		*/
+		Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
+		Mat complexI;
+		merge(planes, 2, complexI);         // Add to the expanded another plane with zeros
+		/* 3. Make the Discrete Fourier Transform. It・s possible an in-place calculation (same input as output):
+		*/
+		cv::dft(complexI, complexI);// this way the result may fit in the source matrix
+		/* 4. Transform the real and complex values to magnitude. 
+		A complex number has a real (Re) and a complex (imaginary - Im) part. 
+		The results of a DFT are complex numbers. The magnitude of a DFT is:
+		M^2 = Re(DFT(I))^2 + Im(DFT(I))^2
+		*/
+		split(complexI, planes);                   // planes[0] = Re(DFT(I), planes[1] = Im(DFT(I))
+		magnitude(planes[0], planes[1], planes[0]);// planes[0] = magnitude from planes[0] and planes[1]
+		Mat magI = planes[0];
+		/* 5. Switch to a logarithmic scale. 
+		It turns out that the dynamic range of the Fourier coefficients is too large to be displayed on the screen. 
+		We have some small and some high changing values that we can・t observe like this. 
+		Therefore the high values will all turn out as white points, while the small ones as black. 
+		To use the gray scale values to for visualization we can transform our linear scale to a logarithmic one:
+		M_1 = \log{(1 + M)}
+		*/
+		magI += Scalar::all(1);                    // switch to logarithmic scale
+		log(magI, magI);
+#if 0
+		/* 6 Crop and rearrange. Remember, that at the first step, we expanded the image? 
+		Well, it・s time to throw away the newly introduced values. 
+		For visualization purposes we may also rearrange the quadrants of the result, 
+		so that the origin (zero, zero) corresponds with the image center.
+		*/
+		magI = magI(Rect(0, 0, magI.cols & -2, magI.rows & -2));
+		int cx = magI.cols/2;
+		int cy = magI.rows/2;
 
+		Mat q0(magI, Rect(0, 0, cx, cy));   // Top-Left - Create a ROI per quadrant
+		Mat q1(magI, Rect(cx, 0, cx, cy));  // Top-Right
+		Mat q2(magI, Rect(0, cy, cx, cy));  // Bottom-Left
+		Mat q3(magI, Rect(cx, cy, cx, cy)); // Bottom-Right
+
+		Mat tmp;                           // swap quadrants (Top-Left with Bottom-Right)
+		q0.copyTo(tmp);
+		q3.copyTo(q0);
+		tmp.copyTo(q3);
+
+		q1.copyTo(tmp);                    // swap quadrant (Top-Right with Bottom-Left)
+		q2.copyTo(q1);
+		tmp.copyTo(q2);
+#endif
+		/* 7 Normalize. This is done again for visualization purposes. 
+		We now have the magnitudes, however this are still out of our image display range of zero to one. 
+		We normalize our values to this range using the normalize() function.
+		*/
+		//normalize(magI, magI, 0, 1, CV_MINMAX); // Transform the matrix with float values into a
+                                        // viewable image form (float between values 0 and 1).
+		imshow("M FFT", magI);
+										
+		frames=0;
+		fft_s = t2;
+		//reset i
+		i=0;
+	}
+_waitkey:
       int c = waitKey(10);
       if( (char)c == 'c' ) { break; }
 
@@ -140,7 +257,7 @@ void ShowOnlyOneChannelOfRGB(const string &winName, Mat &img)
     imshow(winName, fin_img);
 }
 
-int ProcessFrame(Mat & frame)
+int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity)
 {
 	int64 t2=0, t1=cv::getTickCount();
 	//double f=cv::getTickFrequency();
@@ -148,7 +265,7 @@ int ProcessFrame(Mat & frame)
 	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
 	//std::cout<< "FPS@" << 1.0/t  << std::endl;
 
-	detectAndDisplay( frame );
+	faces = detectAndDisplay( frame, avgPixelIntensity );
 
 	//fps[?
 	t2 = cv::getTickCount();
@@ -160,7 +277,7 @@ int ProcessFrame(Mat & frame)
 /**
  * @function detectAndDisplay
  */
-int detectAndDisplay( Mat frame )
+size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity )
 {
    std::vector<Rect> faces;
    Mat frame_gray;
@@ -190,12 +307,12 @@ int detectAndDisplay( Mat frame )
 	imshow("face", faceROI_rgb);
    SepShowImgRGB("sep", roi_rgb);
    //computes mean over roi
-   	Mat m_r(roi_rgb[2]),m_g(roi_rgb[1]),m_b(roi_rgb[0]);//vector to r,g,b matrix
-	cv::Scalar avgPixelIntensity = cv::mean( m_g );//mean of g channel mat only
+   	//Mat m_r(roi_rgb[2]),m_g(roi_rgb[1]),m_b(roi_rgb[0]);//vector to r,g,b matrix
+	//avgPixelIntensity = cv::mean( m_g );//mean of g channel mat only
 	//http://stackoverflow.com/questions/10959987/equivalent-to-cvavg-in-the-opencv-c-interface
-	avgPixelIntensity = cv::mean( faceROI_rgb );//rgb mean of roi, 3 channel matrix
-	cout << "Pixel intensity over ROI = " << avgPixelIntensity.val[0] <<", "<< avgPixelIntensity.val[1] <<", "
-	<<", " <<avgPixelIntensity.val[2] << endl;
+	avgPixelIntensity = cv::mean( faceROI_rgb );//mean of faceroi , 3 channel matrix
+	//cout << "Pixel intensity over ROI = " << avgPixelIntensity.val[0] <<", "<< avgPixelIntensity.val[1] <<", "
+	//<<", " <<avgPixelIntensity.val[2] << endl;
 
 	  //-- Draw the face
       //Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 );
