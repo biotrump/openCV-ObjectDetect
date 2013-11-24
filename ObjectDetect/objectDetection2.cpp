@@ -10,6 +10,8 @@
 #include <iostream>
 #include <stdio.h>
 
+#define	MAX_SAMPLED_FRAMES	(600)
+#define	MAX_SAMPLED_SECONDS	(6)	//6second
 using namespace std;
 using namespace cv;
 /*
@@ -53,40 +55,41 @@ int main( void )
   if( capture )
   {
   	unsigned long frames=0;
-	double t2,t1 ;
-	double fft_s= (double)cv::getTickCount();
-	double f=cv::getTickFrequency();
+	double now_tick,t1 ;
+	double start_tick= (double)cv::getTickCount();
+	double maxSampleTicks=cv::getTickFrequency()*(double)MAX_SAMPLED_SECONDS;
 	int fps=0;
-	cv::Scalar avgPixelIntensity;
-	Mat mfm = Mat(1,60, CV_8UC3, cv::Scalar::all(0));//rgb 3 channel, up to 60fps
-	int i=0;
+	int idx=0;
+	Mat matSampledFrames = Mat(1,MAX_SAMPLED_FRAMES, CV_8UC3, cv::Scalar::all(0));//rgb 3 channel, up to 60fps for 10s
+	cv::Scalar avgPixelIntensity;//The average/mean pixel value of the face roi's individual RGB channel. (r,g,b,0)
 
 	for(;;)
     {
-    	size_t nFace;
+    	size_t nFaces=0;//how many faces are detected
 		t1 = (double)cv::getTickCount();
 		frame = cvQueryFrame( capture );
 		frames++;
       //-- 3. Apply the classifier to the frame
       if( !frame.empty() )
        { 
-       	nFace=0;
-       	ProcessFrame(frame, nFace, avgPixelIntensity);
-		if(nFace){
-//			mfm.at<Vec3b>(0,i)=Point3_<uchar>(i,i,i);	//3D(3 channel) point to matrix element(0,i) which has 3 channels.
+       	nFaces=0;
+       	ProcessFrame(frame, nFaces, avgPixelIntensity);
+		if(nFaces>0){
+//			matSampledFrames.at<Vec3b>(0,i)=Point3_<uchar>(i,i,i);	//3D(3 channel) point to matrix element(0,i) which has 3 channels.
 			//The first 3 components of Scalar are mean of R,G,B frame
 			//Copy the scalar to matrix for later DFT
 			//<Vec3b> 3 channel element to matrix element(0,i) which has 3 channels.
 			//m(0,i) = Scalar
-			mfm.at<Vec3b>(0,i)[0]=(uchar)avgPixelIntensity.val[0];
-			mfm.at<Vec3b>(0,i)[1]=(uchar)avgPixelIntensity.val[1];
-			mfm.at<Vec3b>(0,i)[2]=(uchar)avgPixelIntensity.val[2];
-			i++;
-			cout << "#=" << i << endl;
+			//get the average pixel value of indivisual R,G,B channel of the face ROI
+			matSampledFrames.at<Vec3b>(0,idx)[0]=(uchar)avgPixelIntensity.val[0];
+			matSampledFrames.at<Vec3b>(0,idx)[1]=(uchar)avgPixelIntensity.val[1];
+			matSampledFrames.at<Vec3b>(0,idx)[2]=(uchar)avgPixelIntensity.val[2];
+			idx++;
+			cout << "#=" << idx << endl;
 			}
 		else {
-			i=0;
-			fft_s= (double)cv::getTickCount();
+			idx=0;
+			start_tick= (double)cv::getTickCount();
 			//continue;
 			goto _waitkey;
 			}
@@ -94,21 +97,64 @@ int main( void )
       else
        { 
 		   printf(" --(!) No captured frame -- Break!");
-		   i =0 ; //reset frame start
-		   fft_s= (double)cv::getTickCount(); //reset start of fft
-		   break; 
+		   idx=0 ; //reset frame start
+		   start_tick= (double)cv::getTickCount(); //reset start of fft
+		  goto _waitkey;
 	  }
 	
-	t2 = (double)cv::getTickCount();
-	if( (i>=4) && (t2 - fft_s) >= f) /* 1 second passed to do FFT */
+	now_tick = (double)cv::getTickCount();
+	if( (idx  >=  MAX_SAMPLED_FRAMES) || (now_tick - start_tick)  >= maxSampleTicks ) 	{
+	int hist_w = 600; 
+	int hist_h = 400;
+	Mat avgPixelImage( hist_h, hist_w, CV_8UC3, Scalar( 0,0,0) );
+
+	/// Draw for each channel
+	for( int i = 1; i < idx; i++ )
 	{
+	#if 0
+	  //void putText(Mat& img, const string& text, Point org, int fontFace, double fontScale, Scalar color, int thickness=1, int lineType=8, bool bottomLeftOrigin=false )
+
+	#else
+	 
+      line( avgPixelImage, Point( (i-1)<<2,  matSampledFrames.at<Vec3b>(0,i-1)[0] ) ,
+                       Point( (i)<<2,  matSampledFrames.at<Vec3b>(0,i)[0] ),
+                       Scalar( 255, 0, 0), 1, 8, 0  );
+      line( avgPixelImage, Point( (i-1)<<2,  matSampledFrames.at<Vec3b>(0,i-1)[1] ) ,
+                       Point((i)<<2,  matSampledFrames.at<Vec3b>(0,i)[1] ),
+                       Scalar( 0, 255, 0), 1, 8, 0  );
+      line( avgPixelImage, Point( (i-1)<<2,  matSampledFrames.at<Vec3b>(0,i-1)[2] ) ,
+                       Point( (i)<<2,  matSampledFrames.at<Vec3b>(0,i)[2] ),
+                       Scalar( 0, 0, 255), 1, 8, 0  );
+	#endif
+  }
+
+	/// Display
+	// namedWindow("calcHist Demo", CV_WINDOW_AUTOSIZE );
+	imshow("Average RGB channel of FACE ROI  Demo", avgPixelImage );
+
+	frames=0;
+	start_tick = now_tick;
+	//reset i
+	idx=0;
+	}
+_waitkey:
+      int c = waitKey(10);
+      if( (char)c == 'c' ) { break; }
+    }
+  }
+  return 0;
+}
+
+#if 0
+void doFFT(void)
+{
 	  	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
 	//std::cout<< "FPS@" << 1.0/t  << std::endl;
 	//fps[?
-		double t=t2-t1;
+		/*double t=now_tick-t1;
 		fps = (int)(f / t); //instant fps
 		std::cout <<  "FPS@" << fps  << std::endl;
-		std::cout << "Tick:" << (t2-fft_s) << "F ticks: " << f << " frame#=" << i << std::endl;
+		std::cout << "Tick:" << (now_tick-start_tick) << "F ticks: " << f << " frame#=" << i << std::endl;*/
 		//Do FFT and power spectrum for avgPixelIntensity
 		//http://stackoverflow.com/questions/3183078/how-to-implement-1d-fft-filter-for-each-horizontal-line-data-from-image
 		//http://docs.opencv.org/doc/tutorials/core/discrete_fourier_transform/discrete_fourier_transform.html?highlight=fourier
@@ -122,7 +168,7 @@ int main( void )
 		std::vector<Mat> gray_ch;
 		//Mat pm_rgb = Mat(1,60,CV_8UC4,avgPixelIntensities);
 		//split(avgPixelIntensity->, gray_ch);
-		Mat one_row(1, i	, CV_64FC4);
+		Mat one_row(1, idx	, CV_64FC4);
 		// reduce to 1 channel to do fft?
 		int n=getOptimalDFTSize(i); //1d matrix //expand input image to optimal size
 		Mat padded;
@@ -189,20 +235,8 @@ int main( void )
 		//normalize(magI, magI, 0, 1, CV_MINMAX); // Transform the matrix with float values into a
                                         // viewable image form (float between values 0 and 1).
 		imshow("M FFT", magI);
-										
-		frames=0;
-		fft_s = t2;
-		//reset i
-		i=0;
-	}
-_waitkey:
-      int c = waitKey(10);
-      if( (char)c == 'c' ) { break; }
-
-    }
-  }
-  return 0;
 }
+#endif
 
 /**
 ShowOnlyOneChannelOfRGB
@@ -259,7 +293,7 @@ void ShowOnlyOneChannelOfRGB(const string &winName, Mat &img)
 
 int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity)
 {
-	int64 t2=0, t1=cv::getTickCount();
+	int64 now_tick=0, t1=cv::getTickCount();
 	//double f=cv::getTickFrequency();
 	//int fps=0;
 	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
@@ -268,8 +302,8 @@ int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity)
 	faces = detectAndDisplay( frame, avgPixelIntensity );
 
 	//fps[?
-	t2 = cv::getTickCount();
-	return (int)(t2-t1);
+	now_tick = cv::getTickCount();
+	return (int)(now_tick-t1);
 	//fps = (int)(f / t);
 	//std::cout <<  "FPS@" << fps  << std::endl;
 }
