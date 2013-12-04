@@ -10,8 +10,8 @@
 #include <iostream>
 #include <stdio.h>
 
-#define	MAX_SAMPLED_FRAMES	(600)
-#define	MAX_SAMPLED_SECONDS	(6)	//6second
+#define	MAX_SAMPLED_FRAMES	(400)
+#define	MAX_SAMPLED_SECONDS	(10)	//6second
 using namespace std;
 using namespace cv;
 /*
@@ -51,7 +51,7 @@ int main( void )
   if( !eyes_cascade.load( eyes_cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
 
   //-- 2. Read the video stream
-  capture = cvCaptureFromCAM( -1 );
+  capture = cvCaptureFromCAM( 1 );
   if( capture )
   {
   	unsigned long frames=0;
@@ -61,6 +61,7 @@ int main( void )
 	int fps=0;
 	int idx=0;
 	Mat matSampledFrames = Mat(1,MAX_SAMPLED_FRAMES, CV_8UC3, cv::Scalar::all(0));//rgb 3 channel, up to 60fps for 10s
+	std::vector<Point3d> Xtr;
 	cv::Scalar avgPixelIntensity;//The average/mean pixel value of the face roi's individual RGB channel. (r,g,b,0)
 
 	for(;;)
@@ -81,9 +82,17 @@ int main( void )
 			//<Vec3b> 3 channel element to matrix element(0,i) which has 3 channels.
 			//m(0,i) = Scalar
 			//get the average pixel value of indivisual R,G,B channel of the face ROI
-			matSampledFrames.at<Vec3b>(0,idx)[0]=(uchar)avgPixelIntensity.val[0];
-			matSampledFrames.at<Vec3b>(0,idx)[1]=(uchar)avgPixelIntensity.val[1];
-			matSampledFrames.at<Vec3b>(0,idx)[2]=(uchar)avgPixelIntensity.val[2];
+			matSampledFrames.at<Vec3b>(0,idx)[0]=(uchar )avgPixelIntensity.val[0];//b
+			matSampledFrames.at<Vec3b>(0,idx)[1]=(uchar)avgPixelIntensity.val[1];//g
+			matSampledFrames.at<Vec3b>(0,idx)[2]=(uchar)avgPixelIntensity.val[2];//r
+			
+			//Adding the average point3d  to array
+			Xtr.push_back(Point3d(avgPixelIntensity.val[0],avgPixelIntensity.val[1],avgPixelIntensity.val[2]));
+			cout << "vector size" << Xtr.size() << endl;
+			/*
+			printf("(%d,%d,%d)\n",matSampledFrames.at<Vec3b>(0,idx)[2],
+				matSampledFrames.at<Vec3b>(0,idx)[1], 
+			 matSampledFrames.at<Vec3b>(0,idx)[0]);*/
 			idx++;
 			cout << "#=" << idx << endl;
 			}
@@ -91,6 +100,7 @@ int main( void )
 			idx=0;
 			start_tick= (double)cv::getTickCount();
 			//continue;
+			Xtr.clear();
 			goto _waitkey;
 			}
 		}
@@ -99,6 +109,7 @@ int main( void )
 		   printf(" --(!) No captured frame -- Break!");
 		   idx=0 ; //reset frame start
 		   start_tick= (double)cv::getTickCount(); //reset start of fft
+		   Xtr.clear();
 		  goto _waitkey;
 	  }
 	
@@ -107,7 +118,12 @@ int main( void )
 	int hist_w = 600; 
 	int hist_h = 400;
 	Mat avgPixelImage( hist_h, hist_w, CV_8UC3, Scalar( 0,0,0) );
-
+	/*
+	Scalar     mean;
+	Scalar     stddev;
+	cv::meanStdDev ( matSampledFrames, mean, stddev );
+	matSampledFrames.at<Vec3b>(0,i)[0] - mean.val[0]/stddev.val[0];
+	*/
 	/// Draw for each channel
 	for( int i = 1; i < idx; i++ )
 	{
@@ -115,22 +131,38 @@ int main( void )
 	  //void putText(Mat& img, const string& text, Point org, int fontFace, double fontScale, Scalar color, int thickness=1, int lineType=8, bool bottomLeftOrigin=false )
 
 	#else
-	 
-      line( avgPixelImage, Point( (i-1)<<2,  matSampledFrames.at<Vec3b>(0,i-1)[0] ) ,
-                       Point( (i)<<2,  matSampledFrames.at<Vec3b>(0,i)[0] ),
+	 /*int y= matSampledFrames.at<Vec3b>(0,i-1)[0];
+      line( avgPixelImage, Point( (i-1)<<2,  (matSampledFrames.at<Vec3b>(0,i-1)[0] - 40)*2 ) ,
+                       Point( (i)<<2,  (matSampledFrames.at<Vec3b>(0,i)[0]-40)*2 ),
                        Scalar( 255, 0, 0), 1, 8, 0  );
-      line( avgPixelImage, Point( (i-1)<<2,  matSampledFrames.at<Vec3b>(0,i-1)[1] ) ,
-                       Point((i)<<2,  matSampledFrames.at<Vec3b>(0,i)[1] ),
+      line( avgPixelImage, Point( (i-1)<<2,  (matSampledFrames.at<Vec3b>(0,i-1)[1] - 40)*2 ) ,
+                       Point((i)<<2,  (matSampledFrames.at<Vec3b>(0,i)[1] - 40)*2 ),
                        Scalar( 0, 255, 0), 1, 8, 0  );
-      line( avgPixelImage, Point( (i-1)<<2,  matSampledFrames.at<Vec3b>(0,i-1)[2] ) ,
-                       Point( (i)<<2,  matSampledFrames.at<Vec3b>(0,i)[2] ),
+      line( avgPixelImage, Point( (i-1)<<2,  (matSampledFrames.at<Vec3b>(0,i-1)[2] - 40)*2 ) ,
+                       Point( (i)<<2,  (matSampledFrames.at<Vec3b>(0,i)[2] - 40)*2 ),
                        Scalar( 0, 0, 255), 1, 8, 0  );
-	#endif
+					   */
+#if 1
+		line( avgPixelImage, Point( (i-1)<<2,  Xtr[i-1].x ) ,
+                       Point( (i)<<2,  Xtr[i].x ),
+                       Scalar( 255, 0, 0), 1, 8, 0  );
+      line( avgPixelImage, Point( (i-1)<<2, Xtr[i-1].y ) ,
+                       Point((i)<<2,  Xtr[i].y ),
+                       Scalar( 0, 255, 0), 1, 8, 0  );
+      line( avgPixelImage, Point( (i-1)<<2,  Xtr[i-1].z ) ,
+                       Point( (i)<<2,  Xtr[i].z ),
+                       Scalar( 0, 0, 255), 1, 8, 0  );
+#endif
+#endif
   }
 
 	/// Display
 	// namedWindow("calcHist Demo", CV_WINDOW_AUTOSIZE );
 	imshow("Average RGB channel of FACE ROI  Demo", avgPixelImage );
+	cout << "vector size" << Xtr.size()<<endl;
+	if(!Xtr.empty()) {
+		cout<<"***"<<endl;
+		Xtr.clear();}
 
 	frames=0;
 	start_tick = now_tick;
@@ -138,7 +170,7 @@ int main( void )
 	idx=0;
 	}
 _waitkey:
-      int c = waitKey(10);
+	int c = waitKey(10);
       if( (char)c == 'c' ) { break; }
     }
   }
@@ -326,13 +358,15 @@ size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity )
    //-- Detect faces
    face_cascade.detectMultiScale( frame_gray, faces, 1.3, 2, 0, Size(80, 80) );
 
-   for( size_t i = 0; i < faces.size(); i++ )
+   //for( size_t i = 0; i < faces.size(); i++ )
+   size_t i=0;
+   if(faces.size())
     {
       Mat faceROI = frame_gray( faces[i] );
       std::vector<Rect> eyes;
 	  	Mat faceROI_rgb = frame( faces[i] );
-	std::vector<Mat> roi_rgb;//a dynamic matrix array
-	Mat ig;
+#if 0
+		std::vector<Mat> roi_rgb;//a dynamic matrix array
 	split(faceROI_rgb, roi_rgb);
 	 //split rgb channels
 	imshow( "r",roi_rgb[2]);
@@ -340,13 +374,13 @@ size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity )
 	imshow( "b",roi_rgb[0]);
 	imshow("face", faceROI_rgb);
    SepShowImgRGB("sep", roi_rgb);
+#endif
    //computes mean over roi
    	//Mat m_r(roi_rgb[2]),m_g(roi_rgb[1]),m_b(roi_rgb[0]);//vector to r,g,b matrix
 	//avgPixelIntensity = cv::mean( m_g );//mean of g channel mat only
 	//http://stackoverflow.com/questions/10959987/equivalent-to-cvavg-in-the-opencv-c-interface
-	avgPixelIntensity = cv::mean( faceROI_rgb );//mean of faceroi , 3 channel matrix
-	//cout << "Pixel intensity over ROI = " << avgPixelIntensity.val[0] <<", "<< avgPixelIntensity.val[1] <<", "
-	//<<", " <<avgPixelIntensity.val[2] << endl;
+   		avgPixelIntensity = cv::mean( faceROI_rgb );//mean of faceroi , 3 channel matrix (ch0,ch1,ch2)=>(b,g,r)
+	cout << "(" << avgPixelIntensity.val[2] <<", "<< avgPixelIntensity.val[1] <<", "  <<avgPixelIntensity.val[0] << ")"<<endl;
 
 	  //-- Draw the face
       //Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 );
