@@ -118,12 +118,12 @@ int main( void )
 	int hist_w = 600; 
 	int hist_h = 400;
 	Mat avgPixelImage( hist_h, hist_w, CV_8UC3, Scalar( 0,0,0) );
-	/*
 	Scalar     mean;
 	Scalar     stddev;
-	cv::meanStdDev ( matSampledFrames, mean, stddev );
-	matSampledFrames.at<Vec3b>(0,i)[0] - mean.val[0]/stddev.val[0];
-	*/
+	cv::meanStdDev ( Xtr, mean, stddev );
+	//raw trace r,g,b : x'[i]=(x[i].[0]-mean.val[0])/stdDev.val[0];
+	//matSampledFrames.at<Vec3b>(0,i)[0] - mean.val[0]/stddev.val[0];
+	
 	/// Draw for each channel
 	for( int i = 1; i < idx; i++ )
 	{
@@ -143,15 +143,38 @@ int main( void )
                        Scalar( 0, 0, 255), 1, 8, 0  );
 					   */
 #if 1
-		line( avgPixelImage, Point( (i-1)<<2,  Xtr[i-1].x ) ,
+		//raw trace r,g,b : x'[i]=(x[i].[0]-mean.val[0])/stdDev.val[0];
+#define R_RAW_TRACE(ch)		(((double)ch - mean.val[2])/stddev.val[2]*-30.0 + 100.0 )
+#define G_RAW_TRACE(ch) 	(((double)ch - mean.val[1])/stddev.val[1]*-30.0 + 200.0)
+#define B_RAW_TRACE(ch)		(((double)ch - mean.val[0])/stddev.val[0]*-30.0 + 300.0)
+#if 1
+			double t0,t1;
+			t0 = B_RAW_TRACE( Xtr[i-1].x);
+			t1 = B_RAW_TRACE(Xtr[i].x);
+			line( avgPixelImage, Point( (i-1)<<2, B_RAW_TRACE( Xtr[i-1].x) ) ,//b
+                       Point( (i)<<2,  B_RAW_TRACE(Xtr[i].x) ),
+                       Scalar( 255, 0, 0), 1, 8, 0  );
+			t0 = G_RAW_TRACE( Xtr[i-1].y);
+			t1 = G_RAW_TRACE(Xtr[i].y);
+      line( avgPixelImage, Point( (i-1)<<2,G_RAW_TRACE(Xtr[i-1].y) ) ,//g
+                       Point((i)<<2,  G_RAW_TRACE(Xtr[i].y) ),
+                       Scalar( 0, 255, 0), 1, 8, 0  );
+	  			t0 = R_RAW_TRACE( Xtr[i-1].z);
+			t1 = R_RAW_TRACE(Xtr[i].z);
+      line( avgPixelImage, Point( (i-1)<<2, R_RAW_TRACE( Xtr[i-1].z) ) ,//r
+                       Point( (i)<<2, R_RAW_TRACE( Xtr[i].z) ),
+                       Scalar( 0, 0, 255), 1, 8, 0  );
+#else
+	line( avgPixelImage, Point( (i-1)<<2,  Xtr[i-1].x ) ,//b
                        Point( (i)<<2,  Xtr[i].x ),
                        Scalar( 255, 0, 0), 1, 8, 0  );
-      line( avgPixelImage, Point( (i-1)<<2, Xtr[i-1].y ) ,
+      line( avgPixelImage, Point( (i-1)<<2, Xtr[i-1].y ) ,//g
                        Point((i)<<2,  Xtr[i].y ),
                        Scalar( 0, 255, 0), 1, 8, 0  );
-      line( avgPixelImage, Point( (i-1)<<2,  Xtr[i-1].z ) ,
+      line( avgPixelImage, Point( (i-1)<<2,  Xtr[i-1].z ) ,//r
                        Point( (i)<<2,  Xtr[i].z ),
                        Scalar( 0, 0, 255), 1, 8, 0  );
+#endif
 #endif
 #endif
   }
