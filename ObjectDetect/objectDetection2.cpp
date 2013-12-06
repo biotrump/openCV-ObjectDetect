@@ -22,8 +22,8 @@ std::vector<type T> ==> a vector is a dynamically allocated array,  but an array
 */
 
 /** Function Headers */
-int ProcessFrame(Mat frame, size_t &faces, cv::Scalar &avgPixelIntensity);
-size_t detectAndDisplay( Mat &frame,cv::Scalar& avgPixelIntensity );
+int ProcessFrame(Mat frame, size_t &faces, cv::Scalar &avgPixelIntensity, 	Rect & roi_new);
+size_t detectAndDisplay( Mat &frame,cv::Scalar& avgPixelIntensity, 	Rect  &roi_new );
 
 /** Global variables */
 /*
@@ -64,7 +64,8 @@ int main( void )
 //  if( capture )
   if(vc.isOpened())
   {
-  	unsigned long frames=0;
+	Mat frame, small_frame;
+	unsigned long frames=0;
 	double now_tick,t1 ;
 	double start_tick= (double)cv::getTickCount();
 	double maxSampleTicks=cv::getTickFrequency()*(double)MAX_SAMPLED_SECONDS;
@@ -79,14 +80,29 @@ int main( void )
     {
     	size_t nFaces=0;//how many faces are detected
 		t1 = (double)cv::getTickCount();
+		Rect  roi_new;
 		//frame = cvQueryFrame( capture );
 		vc>>frame;
 		frames++;
       //-- 3. Apply the classifier to the frame
       if( !frame.empty() )
        { 
-       	nFaces=0;
-       	ProcessFrame(frame, nFaces, avgPixelIntensity);
+		   //a face is detected last time, so the new detecting area is around the last face ROI to speed up the track
+		   if(nFaces){
+			   int step=roi_new.width /10;
+			   (roi_new.x > step)?roi_new.x -=step:0;
+			   step = roi_new.height /10;
+			   (roi_new.y > step )?roi_new.y-= step:0;
+
+				roi_new.width *= 6; // 1.2== 6/5
+				roi_new.width /= 5;
+				roi_new.height *=  6;//1.2 == 6/5
+				roi_new.height /=  5;
+				small_frame = frame(roi_new);
+       			nFaces=0;
+		   }
+		   else small_frame=frame;
+       	ProcessFrame(small_frame, nFaces, avgPixelIntensity, roi_new);
 		if(nFaces>0){
 //			matSampledFrames.at<Vec3b>(0,i)=Point3_<uchar>(i,i,i);	//3D(3 channel) point to matrix element(0,i) which has 3 channels.
 			//The first 3 components of Scalar are mean of R,G,B frame
@@ -358,7 +374,7 @@ void ShowOnlyOneChannelOfRGB(const string &winName, Mat &img)
     imshow(winName, fin_img);
 }
 
-int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity)
+int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity,  Rect  &roi_new)
 {
 	int64 now_tick=0, t1=cv::getTickCount();
 	//double f=cv::getTickFrequency();
@@ -366,7 +382,7 @@ int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity)
 	//t = ((double)cv::getTickCount() - t)/cv::getTickFrequency();
 	//std::cout<< "FPS@" << 1.0/t  << std::endl;
 
-	faces = detectAndDisplay( frame, avgPixelIntensity );
+	faces = detectAndDisplay( frame, avgPixelIntensity, roi_new );
 
 	//fps[?
 	now_tick = cv::getTickCount();
@@ -378,7 +394,7 @@ int ProcessFrame(Mat frame, size_t &faces, cv::Scalar & avgPixelIntensity)
 /**
  * @function detectAndDisplay
  */
-size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity )
+size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity, Rect & roi_new )
 {
    std::vector<Rect> faces;
    Mat frame_gray;
@@ -400,6 +416,7 @@ size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity )
       Mat faceROI = frame_gray( faces[i] );
       std::vector<Rect> eyes;
 	  	Mat faceROI_rgb = frame( faces[i] );
+		roi_new = faces[i];
 #if 0
 		std::vector<Mat> roi_rgb;//a dynamic matrix array
 	split(faceROI_rgb, roi_rgb);
