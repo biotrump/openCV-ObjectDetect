@@ -65,7 +65,7 @@ int main( void )
   if(vc.isOpened())
   {
 	Mat frame, small_frame;
-	unsigned long frames=0;
+	unsigned long frame_no=0;
 	double now_tick,t1 ;
 	double start_tick= (double)cv::getTickCount();
 	double maxSampleTicks=cv::getTickFrequency()*(double)MAX_SAMPLED_SECONDS;
@@ -81,9 +81,8 @@ int main( void )
     	size_t nFaces=0;//how many faces are detected
 		t1 = (double)cv::getTickCount();
 		Rect  roi_new;
-		//frame = cvQueryFrame( capture );
-		vc>>frame;
-		frames++;
+		vc >> frame; //get one frame
+		frame_no++;
       //-- 3. Apply the classifier to the frame
       if( !frame.empty() )
        { 
@@ -99,10 +98,10 @@ int main( void )
 				roi_new.height *=  6;//1.2 == 6/5
 				roi_new.height /=  5;
 				small_frame = frame(roi_new);
-       			nFaces=0;
+				ProcessFrame(small_frame, nFaces, avgPixelIntensity, roi_new);
 		   }
-		   else small_frame=frame;
-       	ProcessFrame(small_frame, nFaces, avgPixelIntensity, roi_new);
+			if(nFaces==0)//first time search, or the new searching area around faceroi fails.
+		          	ProcessFrame(frame, nFaces, avgPixelIntensity, roi_new);
 		if(nFaces>0){
 //			matSampledFrames.at<Vec3b>(0,i)=Point3_<uchar>(i,i,i);	//3D(3 channel) point to matrix element(0,i) which has 3 channels.
 			//The first 3 components of Scalar are mean of R,G,B frame
@@ -215,7 +214,7 @@ int main( void )
 		cout<<"***"<<endl;
 		Xtr.clear();}
 
-	frames=0;
+	frame_no=0;
 	start_tick = now_tick;
 	//reset i
 	idx=0;
