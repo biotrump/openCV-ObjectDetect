@@ -31,7 +31,6 @@ a--cascade="d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_fron
 */
 #if defined(WIN32) || defined(_WIN32)
 //String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_frontalface_alt_tree.xml";
-
 String eyes_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_eye.xml";
 String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\lbpcascades\\lbpcascade_frontalface.xml";//lbpcascade_profileface.xml";
 #endif
@@ -53,16 +52,17 @@ RNG rng(12345);
  */
 int main( void )
 {
-  CvCapture* capture;
+//  CvCapture* capture;
   Mat frame;
-
+  VideoCapture vc(0);
   //-- 1. Load the cascade
   if( !face_cascade.load( face_cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
   if( !eyes_cascade.load( eyes_cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
 
   //-- 2. Read the video stream
-  capture = cvCaptureFromCAM( 0 );
-  if( capture )
+//  capture = cvCaptureFromCAM( 0 );
+//  if( capture )
+  if(vc.isOpened())
   {
   	unsigned long frames=0;
 	double now_tick,t1 ;
@@ -73,12 +73,14 @@ int main( void )
 	Mat matSampledFrames = Mat(1,MAX_SAMPLED_FRAMES, CV_8UC3, cv::Scalar::all(0));//rgb 3 channel, up to 60fps for 10s
 	std::vector<Point3d> Xtr;
 	cv::Scalar avgPixelIntensity;//The average/mean pixel value of the face roi's individual RGB channel. (r,g,b,0)
-
+	//vc.set(CV_CAP_PROP_FRAME_WIDTH, 320.0);
+	//vc.set(CV_CAP_PROP_FRAME_HEIGHT, 240.0);
 	for(;;)
     {
     	size_t nFaces=0;//how many faces are detected
 		t1 = (double)cv::getTickCount();
-		frame = cvQueryFrame( capture );
+		//frame = cvQueryFrame( capture );
+		vc>>frame;
 		frames++;
       //-- 3. Apply the classifier to the frame
       if( !frame.empty() )
@@ -389,7 +391,7 @@ size_t detectAndDisplay( Mat &frame, cv::Scalar &avgPixelIntensity )
    equalizeHist( frame_gray, frame_gray );
 
    //-- Detect faces
-   face_cascade.detectMultiScale( frame_gray, faces, 1.3, 2, 0, Size(80, 80) );
+   face_cascade.detectMultiScale( frame_gray, faces, 1.2, 3, 0, Size(80, 80) );
 
    //for( size_t i = 0; i < faces.size(); i++ )
    size_t i=0;
