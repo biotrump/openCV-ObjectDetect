@@ -3,6 +3,7 @@
  * @author A. Huaman ( based in the classic facedetect.cpp in samples/c )
  * @brief A simplified version of facedetect.cpp, show how to load a cascade classifier and how to find objects (Face + eyes) in a video stream - Using LBP here
  */
+
 #include "opencv2/objdetect/objdetect.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
@@ -28,9 +29,18 @@ size_t detectAndDisplay( Mat &frame,cv::Scalar& avgPixelIntensity );
 /*
 a--cascade="d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_frontalface_alt_tree.xml" --nested-cascade="d:\\repos\\openCV\win\\opencv\\data\\haarcascades\\haarcascade_eye.xml" --scale=1.3 -1
 */
+#if defined(WIN32) || defined(_WIN32)
 //String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_frontalface_alt_tree.xml";
+
 String eyes_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_eye.xml";
 String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\lbpcascades\\lbpcascade_frontalface.xml";//lbpcascade_profileface.xml";
+#endif
+
+#if defined(__linux__) || defined(LINUX) || defined(__APPLE__) || defined(ANDROID)
+String eyes_cascade_name = "../../2.4.7/data/haarcascades/haarcascade_eye.xml";
+String face_cascade_name = "../../2.4.7/data/lbpcascades/lbpcascade_frontalface.xml";
+#endif
+
 //String eyes_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_eye_tree_eyeglasses.xml";
 CascadeClassifier face_cascade;
 CascadeClassifier eyes_cascade;
@@ -51,7 +61,7 @@ int main( void )
   if( !eyes_cascade.load( eyes_cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
 
   //-- 2. Read the video stream
-  capture = cvCaptureFromCAM( 1 );
+  capture = cvCaptureFromCAM( 0 );
   if( capture )
   {
   	unsigned long frames=0;
@@ -233,13 +243,13 @@ void doFFT(void)
 		This implies that for each image value the result is two image values (one per component). 
 		Moreover, the frequency domains range is much larger than its spatial counterpart. Therefore,
 		we store these usually at least in a float format. 
-		Therefore we・ll convert our input image to this type and expand it with another channel to 
+		Therefore we\A1\A6ll convert our input image to this type and expand it with another channel to 
 		hold the complex values:
 		*/
 		Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
 		Mat complexI;
 		merge(planes, 2, complexI);         // Add to the expanded another plane with zeros
-		/* 3. Make the Discrete Fourier Transform. It・s possible an in-place calculation (same input as output):
+		/* 3. Make the Discrete Fourier Transform. It\A1\A6s possible an in-place calculation (same input as output):
 		*/
 		cv::dft(complexI, complexI);// this way the result may fit in the source matrix
 		/* 4. Transform the real and complex values to magnitude. 
@@ -252,7 +262,7 @@ void doFFT(void)
 		Mat magI = planes[0];
 		/* 5. Switch to a logarithmic scale. 
 		It turns out that the dynamic range of the Fourier coefficients is too large to be displayed on the screen. 
-		We have some small and some high changing values that we can・t observe like this. 
+		We have some small and some high changing values that we can\A1\A6t observe like this. 
 		Therefore the high values will all turn out as white points, while the small ones as black. 
 		To use the gray scale values to for visualization we can transform our linear scale to a logarithmic one:
 		M_1 = \log{(1 + M)}
@@ -261,7 +271,7 @@ void doFFT(void)
 		log(magI, magI);
 #if 0
 		/* 6 Crop and rearrange. Remember, that at the first step, we expanded the image? 
-		Well, it・s time to throw away the newly introduced values. 
+		Well, it\A1\A6s time to throw away the newly introduced values. 
 		For visualization purposes we may also rearrange the quadrants of the result, 
 		so that the origin (zero, zero) corresponds with the image center.
 		*/
