@@ -34,8 +34,10 @@ a--cascade="d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_fron
 */
 #if defined(WIN32) || defined(_WIN32)
 //String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_frontalface_alt_tree.xml";
-String eyes_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_eye.xml";
-String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\lbpcascades\\lbpcascade_frontalface.xml";//lbpcascade_profileface.xml";
+//String eyes_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\haarcascades\\haarcascade_eye.xml";
+//String face_cascade_name = "d:\\repos\\openCV\\win\\opencv\\data\\lbpcascades\\lbpcascade_frontalface.xml";//lbpcascade_profileface.xml";
+String eyes_cascade_name = "haarcascade_eye.xml";
+String face_cascade_name = "lbpcascade_frontalface.xml";//lbpcascade_profileface.xml";
 #endif
 
 #if defined(__linux__) || defined(LINUX) || defined(__APPLE__) || defined(ANDROID)
@@ -47,6 +49,7 @@ String face_cascade_name = "../../2.4.7/data/lbpcascades/lbpcascade_frontalface.
 CascadeClassifier face_cascade;
 CascadeClassifier eyes_cascade;
 string window_name = "Capture - Face detection";
+
 
 RNG rng(12345);
 
@@ -199,16 +202,52 @@ int SearchTrackFace(Mat frame, size_t &faces, cv::Scalar & avgRGBValue,  Rect  &
 /**
  * @function main
  * param -f: face cascade classfier
- *		 -e: eye
- *		 -c: 0,1,2 camera index
+ *		 	-e: eye cascade classfier
+ *		 	-Cnnn: index of camera ,-1(auto),0,1,2 camera index 
+ *			-Fpath: a static piture or motion picture file
  */
 int main( int argc, char *argv[] )
 {
-	VideoCapture vc(0);
+	VideoCapture vc;
+	//VideoCapture vc("face.mp4");//vc(0);
+	//VideoCapture vc("d:\\vs\\openCV\\ObjectDetect\\FaceDetect\\baby.mp4");
+
+	if(argc>1){
+		int index=-1;
+		for(int i=1;(i< argc) && (argv[i][0]=='-') ;i++){
+			switch(argv[i][1]){
+			case 'C':
+				index = std::atoi( argv[i]+2 );
+				if(!vc.open(index)){
+					cout << " open cam device index:"<< index <<"failed." <<endl;
+				}
+				break;
+			case 'F':
+				if(!vc.open(argv[i]+2)){
+					cout << " open media file"<< argv[i]+2 <<" failed." <<endl;
+				}
+				break;
+			case 'f':
+				face_cascade_name = argv[i]+2;
+				break;
+			case 'e':
+				eyes_cascade_name = argv[i]+2;
+				break;
+			default:
+				break;
+			}
+		}
+	}else{
+		cout <<"-fcascade_file: face cascade classfier" << endl;
+		cout <<"-ecascade_file: eye cascade classfier" << endl;
+		cout <<"-Cnnn: index of camera ,-1(auto),0,1,2 camera index" << endl;
+		cout <<"-Fpath: a static piture or motion picture file" << endl;
+		vc.open(-1);
+	}
 
   	//-- 1. Load the cascade
-  	if( !face_cascade.load( face_cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
-  	if( !eyes_cascade.load( eyes_cascade_name ) ){ printf("--(!)Error loading\n"); return -1; };
+  	if( !face_cascade.load( face_cascade_name ) ){ printf("--(!)Error loading %s\n", face_cascade_name); return -1; };
+  	if( !eyes_cascade.load( eyes_cascade_name ) ){ printf("--(!)Error loading %s\n", eyes_cascade_name); return -1; };
 
   	//-- 2. Read the video stream
 	if(vc.isOpened())
