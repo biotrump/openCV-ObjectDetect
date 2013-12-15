@@ -19,9 +19,25 @@
 
 #define	HR_WIN_WIDTH	(640)
 #define HR_WIN_HEIGHT	(480)
+#define	FACE_ROI_FACTOR(r)		(((r)*4)/5)	//80% area is used.
+#define	FACE_ROI_ADJUST(x,w)	((x) + ((w)/10))	//10%+10% +80% = 100%
 
+//raw trace r,g,b : x'[i]=(x[i].[0]-mean.val[0])/stdDev.val[0];
+#define RAWTRACE(x, m, s)	(((double)(x) - (m))/s)
+
+#define RAW_TRACE_ADJ(x,m,s, off_y)		(RAWTRACE(x,m,s)*-30.0 + off_y )
+
+//#define R_RAW_TRACE(ch)		(((double)ch - mean.val[2])/stddev.val[2]*-30.0 + 100.0 )
+//#define G_RAW_TRACE(ch) 	(((double)ch - mean.val[1])/stddev.val[1]*-30.0 + 200.0)
+//#define B_RAW_TRACE(ch)		(((double)ch - mean.val[0])/stddev.val[0]*-30.0 + 300.0)
+
+//filter 
+// high pass filter : respiration rate 6bpm = 6/60 = 0.1hz (>= 0.1hz is allowed)
+// low pass filter : HR up to 210bpm = 210/60=3.5hz (>= 3.5hz is filterted)
 using namespace std;
 using namespace cv;
+
+extern int DFT(InputArray _src, double sample_win, int frames);
 /*
 http://www.cplusplus.com/reference/vector/vector/
 std::vector<type T> ==> a vector is a dynamically allocated array,  but an array is static allocation.
@@ -65,6 +81,52 @@ RNG rng(12345);
    SepShowImgRGB("sep", roi_rgb);
 
 }
+#endif
+
+#if 0
+void ForwardFFT(Mat &Src, Mat *FImg,double sample_win, int frames)
+{
+    int M = getOptimalDFTSize( Src.rows );
+    int N = getOptimalDFTSize( Src.cols );
+    Mat padded;    
+    copyMakeBorder(Src, padded, 0, M - Src.rows, 0, N - Src.cols, BORDER_CONSTANT, Scalar::all(0));
+
+    Mat planes[] = {Mat_<float>(padded), Mat::zeros(padded.size(), CV_32F)};
+    Mat complexImg;
+    merge(planes, 2, complexImg); 
+    dft(complexImg, complexImg);    
+    split(complexImg, planes);
+
+    planes[0] = planes[0](Rect(0, 0, planes[0].cols & -2, planes[0].rows & -2));
+    planes[1] = planes[1](Rect(0, 0, planes[1].cols & -2, planes[1].rows & -2));
+
+    Recomb(planes[0],planes[0]);
+    Recomb(planes[1],planes[1]);
+    
+    planes[0]/=float(M*N);
+    planes[1]/=float(M*N);
+    FImg[0]=planes[0].clone();
+    FImg[1]=planes[1].clone();
+}
+
+void ForwardFFT_Mag_Phase(Mat &src, Mat &Mag,Mat &Phase)
+{
+    Mat planes[2];
+    ForwardFFT(src,planes);
+    Mag.zeros(planes[0].rows,planes[0].cols,CV_32F);
+    Phase.zeros(planes[0].rows,planes[0].cols,CV_32F);
+    cv::cartToPolar(planes[0],planes[1],Mag,Phase);
+}
+
+Mat LogMag;
+    LogMag.zeros(Mag.rows,Mag.cols,CV_32F);
+    LogMag=(Mag+1);
+    cv::log(LogMag,LogMag);
+    //---------------------------------------------------
+    imshow("???????? ?????????", LogMag);
+    imshow("????", Phase);
+    imshow("????????? ??????????", img);  
+
 #endif
 
 /**
@@ -130,25 +192,33 @@ size_t detectFaceROI( Mat &frame, cv::Scalar &avgRGBValue, Rect & roi_new )
 {
 	std::vector<Rect> faces;
 	Mat frame_gray;
-
+	
 	cvtColor( frame, frame_gray, CV_BGR2GRAY );
 	equalizeHist( frame_gray, frame_gray );
-
+	
 	//-- Detect faces
 	face_cascade.detectMultiScale( frame_gray, faces, 1.2, 3, 0, Size(80, 80) );
-
+	
 	//for( size_t i = 0; i < faces.size(); i++ )
 	size_t i=0;
 	if(faces.size()){
 		Mat faceROI = frame_gray( faces[i] );
-      	std::vector<Rect> eyes;
+		std::vector<Rect> eyes;
 		roi_new = faces[i];
-	   	//computes mean over roi
+		faces[i].x = FACE_ROI_ADJUST(faces[i].x, faces[i].width); 
+		faces[i].y = FACE_ROI_ADJUST(faces[i].y, faces[i].height);  
+		faces[i].width = FACE_ROI_FACTOR(faces[i].width);
+		faces[i].height = FACE_ROI_FACTOR(faces[i].height);
+		
+		//computes mean over roi
 		//http://stackoverflow.com/questions/10959987/equivalent-to-cvavg-in-the-opencv-c-interface
 		#if 1
 		//only the upper 1/3 face is used to calculate the PPG.
 		//this may have little SNR, but the average r,g,b is more significant
-		Mat type1FaceFOI=frame( Rect( faces[i].x,  faces[i].y,  faces[i].width, faces[i].height /3 ));
+		Mat type1FaceFOI=frame( Rect( FACE_ROI_ADJUST(faces[i].x, faces[i].width),  
+																	FACE_ROI_ADJUST(faces[i].y, faces[i].height), 
+																	FACE_ROI_FACTOR(faces[i].width),
+																	FACE_ROI_FACTOR(faces[i].height) ));
 		avgRGBValue = cv::mean( type1FaceFOI );
 		#else
 		Mat faceROI_rgb = frame( faces[i] );
@@ -157,25 +227,23 @@ size_t detectFaceROI( Mat &frame, cv::Scalar &avgRGBValue, Rect & roi_new )
 		//cout << "(" << avgRGBValue.val[2] <<", "<< avgRGBValue.val[1] <<", "  <<avgRGBValue.val[0] << ")"<<endl;
 
 		//-- Draw the face
-		//Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 );
-		Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2 + faces[i].height/8 );
+		Point center( faces[i].x + faces[i].width/2, faces[i].y + faces[i].height/2  );
 		circle( frame, center, 5, Scalar( 0, 0, 255 ), 3, 8, 0 );
-		ellipse( frame, center, Size( faces[i].width/3, faces[i].height/2), 0, 0, 360, Scalar( 255, 0, 0 ), 2, 8, 0 );
+		ellipse( frame, center, Size( faces[i].width/2, faces[i].height/2), 0, 0, 360, 
+		Scalar( 255, 0, 0 ), 2, 8, 0 );
 
-		//-- In each face, detect eyes
+		//-- In each face, detect eyes, two eyes' distance should be less than face width and greater than half of a face??
 		eyes_cascade.detectMultiScale( faceROI, eyes, 1.1, 2, 0 |CV_HAAR_SCALE_IMAGE, Size(30, 30) );
-		if( eyes.size() == 2)
-      	{
-         for( size_t j = 0; j < eyes.size(); j++ )
-          { //-- Draw the eyes
+		if( eyes.size() == 2)	{
+         for( size_t j = 0; j < eyes.size(); j++ ){ //-- Draw the eyes
             Point eye_center( faces[i].x + eyes[j].x + eyes[j].width/2, faces[i].y + eyes[j].y + eyes[j].height/2 );
             int radius = cvRound( (eyes[j].width + eyes[j].height)*0.25 );
             circle( frame, eye_center, radius, Scalar( 255, 0, 255 ), 3, 8, 0 );
           }
-       	}
-    }
-   	//-- Show what you got
-   	imshow( window_name, frame );
+		}
+  }
+	//-- Show what you got
+	imshow( window_name, frame );
 	return faces.size();
 }
 
@@ -264,10 +332,9 @@ int main( int argc, char *argv[] )
 		cv::Scalar avgRGBValue;//The average/mean pixel value of the face roi's individual RGB channel. (r,g,b,0)
 		//vc.set(CV_CAP_PROP_FRAME_WIDTH, 320.0);
 		//vc.set(CV_CAP_PROP_FRAME_HEIGHT, 240.0);
-		for(;;)
-	    {
+		for(;;){
 			Mat chAvgWin( HR_WIN_HEIGHT, HR_WIN_WIDTH, CV_8UC3, Scalar( 0,0,0) );
-	    	size_t nFaces=0;//how many faces are detected
+	    size_t nFaces=0;//how many faces are detected
 			t1 = (double)cv::getTickCount();
 			Rect  roi_new;	//roi for next search
 			vc >> frame; 	//get one frame
@@ -313,50 +380,55 @@ int main( int argc, char *argv[] )
 				//Xtr.clear();
 				//goto _waitkey;
 			}
-
 			now_tick = (double)cv::getTickCount();
+			double sample_win= (now_tick - start_tick)/cv::getTickFrequency();
 			if( (idx  >=  MAX_SAMPLED_FRAMES) ||
 				(now_tick - start_tick >= maxSampleTicks) ||
 				( !nFaces && (idx >= MIN_SAMPLED_FRAMES )) ||
 				( !nFaces && (now_tick - start_tick >= minSampleTicks) ) ) 	{//show average HR signal,
 				Scalar     mean;
 				Scalar     stddev;
+				std::vector<Point3d> RGBTrace;
+	
 				cv::meanStdDev ( Xtr, mean, stddev );
 
 				//raw trace r,g,b : x'[i]=(x[i].[0]-mean.val[0])/stdDev.val[0];
 				/// Draw signal for each channel
 				for( int i = 1; i < idx; i++ )
 				{
-					//raw trace r,g,b : x'[i]=(x[i].[0]-mean.val[0])/stdDev.val[0];
-					#define R_RAW_TRACE(ch)		(((double)ch - mean.val[2])/stddev.val[2]*-30.0 + 100.0 )
-					#define G_RAW_TRACE(ch) 	(((double)ch - mean.val[1])/stddev.val[1]*-30.0 + 200.0)
-					#define B_RAW_TRACE(ch)		(((double)ch - mean.val[0])/stddev.val[0]*-30.0 + 300.0)
-
 					double t0,t1;
 					int idxw=1;
 
 					if(idx >= (HR_WIN_WIDTH>>1) ) idxw=0;
 					else if(idx < (HR_WIN_WIDTH>>2) ) idxw=2;
 
-					t0 = B_RAW_TRACE( Xtr[i-1].x);
-					t1 = B_RAW_TRACE(Xtr[i].x);
-					line( chAvgWin, Point( (i-1)<<idxw, B_RAW_TRACE( Xtr[i-1].x) ) ,//b
-							   Point( (i)<<idxw,  B_RAW_TRACE(Xtr[i].x) ),
+					t0 = RAW_TRACE_ADJ(Xtr[i-1].x, mean.val[0], stddev.val[0], 300.0);
+					t1 = RAW_TRACE_ADJ(Xtr[i].x, mean.val[0], stddev.val[0],300);
+					line( chAvgWin, Point( (i-1)<<idxw, t0 ) ,//b
+							   Point( (i)<<idxw,  t1),
 							   Scalar( 255, 0, 0), 1, 8, 0  );
-					t0 = G_RAW_TRACE( Xtr[i-1].y);
-					t1 = G_RAW_TRACE(Xtr[i].y);
-					line( chAvgWin, Point( (i-1)<<idxw,G_RAW_TRACE(Xtr[i-1].y) ) ,//g
-								   Point((i)<<idxw,  G_RAW_TRACE(Xtr[i].y) ),
+					t0 = RAW_TRACE_ADJ(Xtr[i-1].y, mean.val[1], stddev.val[1], 200.0);
+					t1 = RAW_TRACE_ADJ(Xtr[i].y, mean.val[1], stddev.val[1], 200.0);
+					line( chAvgWin, Point( (i-1)<<idxw,t0)  ,//g
+								   Point((i)<<idxw,  t1 ),
 								   Scalar( 0, 255, 0), 1, 8, 0  );
-			  				t0 = R_RAW_TRACE( Xtr[i-1].z);
-					t1 = R_RAW_TRACE(Xtr[i].z);
-				  	line( chAvgWin, Point( (i-1)<<idxw, R_RAW_TRACE( Xtr[i-1].z) ) ,//r
-								   Point( (i)<<idxw, R_RAW_TRACE( Xtr[i].z) ),
+			  	t0 = RAW_TRACE_ADJ(Xtr[i-1].z, mean.val[2], stddev.val[2], 100.0);
+					t1 = RAW_TRACE_ADJ(Xtr[i].z, mean.val[2], stddev.val[2], 100.0);
+				  line( chAvgWin, Point( (i-1)<<idxw, t0 ) ,//r
+								   Point( (i)<<idxw, t1 ),
 								   Scalar( 0, 0, 255), 1, 8, 0  );
+
+					RGBTrace.push_back(Point3d(RAWTRACE(Xtr[i-1].x, mean.val[0], stddev.val[0]), 
+													RAWTRACE(Xtr[i-1].y, mean.val[1], stddev.val[1]), 
+													RAWTRACE(Xtr[i-1].z, mean.val[2], stddev.val[2])));
 				}
+				RGBTrace.push_back(Point3d(RAWTRACE(Xtr[idx-1].x, mean.val[0], stddev.val[0]), 
+													RAWTRACE(Xtr[idx-1].y, mean.val[1], stddev.val[1]), 
+													RAWTRACE(Xtr[idx-1].z, mean.val[2], stddev.val[2])));
 				/// Display
 				// namedWindow("calcHist Demo", CV_WINDOW_AUTOSIZE );
 				imshow("Average RGB channel of FACE ROI", chAvgWin );
+				DFT(RGBTrace, sample_win, idx );
 				//cout << "vector size" << Xtr.size()<<endl;
 				if(!Xtr.empty()) {
 					//cout<<"***"<<endl;
